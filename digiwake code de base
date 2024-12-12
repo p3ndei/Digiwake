@@ -1,0 +1,162 @@
+#include <LedControl.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <RTClib.h>
+
+#define DATA_IN 11  // Pin connected to DIN of the matrix
+#define CLK 13      // Pin connected to CLK of the matrix
+#define LOAD 10     // Pin connected to CS of the matrix
+#define BUZZER_PIN 7 // Pin for the buzzer
+#define BUTTON1_PIN 2 // Button to navigate menu
+#define BUTTON2_PIN 3 // Button to select menu option
+#define MATRIX_COUNT 4
+
+LedControl lc = LedControl(DATA_IN, CLK, LOAD, MATRIX_COUNT);
+RTC_DS1307 rtcClock;
+
+int wakeHour = 7;
+int wakeMinute = 30;
+bool alarmActive = true;
+bool is24HourFormat = true;
+int selectedMelody = 1;
+
+bool alarmTriggered = false;
+bool alarmStopped = false;
+
+const byte CHIFFRES[][8] PROGMEM = {
+    {0b00111100, 0b01000010, 0b01000010, 0b01000010, 0b01000010, 0b01000010, 0b01000010, 0b00111100}, // 0
+    {0b00001000, 0b00011000, 0b00101000, 0b00001000, 0b00001000, 0b00001000, 0b00001000, 0b00011100}, // 1
+    {0b00111100, 0b01000010, 0b00000010, 0b00001100, 0b00010000, 0b00100000, 0b01000000, 0b01111110}, // 2
+    {0b00111100, 0b01000010, 0b00000010, 0b00011100, 0b00000010, 0b00000010, 0b01000010, 0b00111100}, // 3
+    {0b00000100, 0b00001100, 0b00010100, 0b00100100, 0b01111111, 0b00000100, 0b00000100, 0b00000100}, // 4
+    {0b01111110, 0b01000000, 0b01000000, 0b01111100, 0b00000010, 0b00000010, 0b01000010, 0b00111100}, // 5
+    {0b00111100, 0b01000010, 0b01000000, 0b01111100, 0b01000010, 0b01000010, 0b01000010, 0b00111100}, // 6
+    {0b01111110, 0b00000010, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000}, // 7
+    {0b00111100, 0b01000010, 0b01000010, 0b00111100, 0b01000010, 0b01000010, 0b01000010, 0b00111100}, // 8
+    {0b00111100, 0b01000010, 0b01000010, 0b00111110, 0b00000010, 0b00000010, 0b01000010, 0b00111100}  // 9
+};
+
+int menuState = 0;
+
+void clearMatrix() {
+    for (int i = 0; i < MATRIX_COUNT; i++) {
+        lc.clearDisplay(i);
+    }
+}
+
+void drawDigit(int number, int matrixIndex) {
+    for (int row = 0; row < 8; row++) {
+        lc.setRow(matrixIndex, row, pgm_read_byte(&(CHIFFRES[number][row])));
+    }
+}
+
+void showMenu(const char* text) {
+    clearMatrix();
+    for (int i = 0; text[i] != '\0' && i < MATRIX_COUNT; i++) {
+        int digit = text[i] - '0';
+        if (digit >= 0 && digit <= 9) {
+            drawDigit(digit, MATRIX_COUNT - 1 - i);
+        }
+    }
+}
+
+void updateDisplay() {
+    if (menuState == 0) {
+        DateTime now = rtcClock.now();
+        int hour = now.hour();
+        int minute = now.minute();
+
+        int hourHigh = hour / 10;
+        int hourLow = hour % 10;
+        int minuteHigh = minute / 10;
+        int minuteLow = minute % 10;
+
+        clearMatrix();
+
+        drawDigit(hourHigh, 3);
+        drawDigit(hourLow, 2);
+        drawDigit(minuteHigh, 1);
+        drawDigit(minuteLow, 0);
+    }
+}
+
+void handleMenu() {
+    static int menuOption = 0;
+
+    if (digitalRead(BUTTON1_PIN) == HIGH) {
+        menuOption = (menuOption + 1) % 4;
+        delay(200);
+    }
+
+    if (digitalRead(BUTTON2_PIN) == HIGH) {
+        switch (menuOption) {
+            case 0:
+                wakeHour = (wakeHour + 1) % 24;
+                break;
+            case 1:
+                wakeMinute = (wakeMinute + 1) % 60;
+                break;
+            case 2:
+                alarmActive = !alarmActive;
+                break;
+            case 3:
+                is24HourFormat = !is24HourFormat;
+                break;
+        }
+        delay(200);
+    }
+
+    switch (menuOption) {
+        case 0:
+            showMenu("Hr");
+            break;
+        case 1:
+            showMenu("Mn");
+            break;
+        case 2:
+            showMenu(alarmActive ? "On" : "Off");
+            break;
+        case 3:
+            showMenu(is24HourFormat ? "24" : "12");
+            break;
+    }
+}
+
+void setup() {
+    for (int i = 0; i < MATRIX_COUNT; i++) {
+        lc.shutdown(i, false);
+        lc.setIntensity(i, 8);
+        lc.clearDisplay(i);
+    }
+
+    Wire.begin();
+    if (!rtcClock.begin()) {
+        while (1);
+    }
+
+    if (!rtcClock.isrunning()) {
+        rtcClock.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    }
+
+    // Configuration des broches pour les boutons en pull-down
+    pinMode(BUTTON1_PIN, INPUT);
+    pinMode(BUTTON2_PIN, INPUT);
+
+    pinMode(BUZZER_PIN, OUTPUT);
+}
+
+void loop() {
+    static unsigned long lastUpdate = 0;
+    unsigned long currentMillis = millis();
+
+    if (currentMillis - lastUpdate >= 1000) {
+        lastUpdate = currentMillis;
+        if (menuState == 0) {
+            updateDisplay();
+        }
+    }
+
+    if (digitalRead(BUTTON1_PIN) == HIGH || digitalRead(BUTTON2_PIN) == HIGH) {
+        handleMenu();
+    }
+}
