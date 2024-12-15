@@ -204,12 +204,12 @@ void reveil() {
 void playMelody(int melody) {
     if (melody == 1) {
         int frequencies[] = {
-            392, 392, 262, 311, 311, 415, 415, 294, 
-            349
+            261, 329, 392, 440, 261, 329, 440, 261, 
+            329
         }; // Fréquences des notes en Hz
         int durations[] = {
-            200, 200, 200, 200, 400, 200, 400, 200, 
-            400
+            316, 316, 316, 316, 316, 316, 316, 316, 
+            316
         }; // Durée de chaque note en ms
 
         for (int i = 0; i < sizeof(frequencies) / sizeof(frequencies[0]); i++) {
