@@ -1,0 +1,300 @@
+#include <LedControl.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <RTClib.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define DATA_IN 11
+#define CLK 13
+#define LOAD 10
+#define BUZZER_PIN 7
+#define BUTTON1_PIN 2
+#define BUTTON2_PIN 3
+#define BUTTON3_PIN 4
+#define MATRIX_COUNT 4
+#define OLED_ADDR 0x3C
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+LedControl lc = LedControl(DATA_IN, CLK, LOAD, MATRIX_COUNT);
+RTC_DS1307 rtcClock;
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
+
+int wakeHour = 7;
+int wakeMinute = 30;
+bool alarmActive = true;
+bool is24HourFormat = true;
+bool alarmTriggered = false;
+
+int menuState = 0;
+int selectedOption = 0;
+bool button1Pressed = false;
+bool button2Pressed = false;
+bool button3Pressed = false;
+unsigned long lastMatrixUpdate = 0;
+int Halarme = 0;
+int Malarme = 0;
+bool boutonchoisiretat = 0;
+
+void setup() {
+  pinMode(BUTTON3_PIN, INPUT_PULLUP);
+  pinMode(BUTTON2_PIN, INPUT_PULLUP);
+  pinMode(BUTTON1_PIN, INPUT_PULLUP);
+  // Initialisation des matrices LED
+    for (int i = 0; i < MATRIX_COUNT; i++) {
+        lc.shutdown(i, false); // Activer la matrice
+        lc.setIntensity(i, 8); // Définir la luminosité
+        lc.clearDisplay(i);    // Effacer la matrice
+    }
+
+    // Initialisation de la communication I2C et du RTC
+    Wire.begin();
+    if (!rtcClock.begin()) {
+        while (1); // Bloquer le programme si le RTC ne fonctionne pas
+    }
+    rtcClock.adjust(DateTime(F(__DATE__), F(__TIME__))); // Synchroniser avec l'heure de compilation
+
+    // Initialisation de l'écran OLED
+    if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
+        while (1); // Bloquer le programme si l'écran OLED ne fonctionne pas
+    }
+
+    // Initialisation des broches pour les boutons et le buzzer
+    pinMode(BUZZER_PIN, OUTPUT);    // Buzzer
+    pinMode(BUTTON1_PIN, INPUT);    // Bouton 1 (Retour au menu principal)
+    pinMode(BUTTON2_PIN, INPUT);    // Bouton 2 (Valider une action)
+    pinMode(BUTTON3_PIN, INPUT);    // Bouton 3 (Défilement)
+
+    // Mise à jour initiale de l'écran OLED
+    
+}
+
+const byte CHIFFRES[][8] PROGMEM = {
+    {0b00111100, 0b01000010, 0b01000010, 0b01000010, 0b01000010, 0b01000010, 0b01000010, 0b00111100},
+    {0b00001000, 0b00011000, 0b00101000, 0b00001000, 0b00001000, 0b00001000, 0b00001000, 0b00011100},
+    {0b00111100, 0b01000010, 0b00000010, 0b00001100, 0b00010000, 0b00100000, 0b01000000, 0b01111110},
+    {0b00111100, 0b01000010, 0b00000010, 0b00011100, 0b00000010, 0b00000010, 0b01000010, 0b00111100},
+    {0b00000100, 0b00001100, 0b00010100, 0b00100100, 0b01111111, 0b00000100, 0b00000100, 0b00000100},
+    {0b01111110, 0b01000000, 0b01000000, 0b01111100, 0b00000010, 0b00000010, 0b01000010, 0b00111100},
+    {0b00111100, 0b01000010, 0b01000000, 0b01111100, 0b01000010, 0b01000010, 0b01000010, 0b00111100},
+    {0b01111110, 0b00000010, 0b00000010, 0b00000100, 0b00001000, 0b00010000, 0b00100000, 0b01000000},
+    {0b00111100, 0b01000010, 0b01000010, 0b00111100, 0b01000010, 0b01000010, 0b01000010, 0b00111100},
+    {0b00111100, 0b01000010, 0b01000010, 0b00111110, 0b00000010, 0b00000010, 0b01000010, 0b00111100}
+};
+
+void clearMatrix() {
+    for (int i = 0; i < MATRIX_COUNT; i++) {
+        lc.clearDisplay(i);
+    }
+}
+
+void drawDigit(int number, int matrixIndex) {
+    for (int row = 0; row < 8; row++) {
+        lc.setRow(matrixIndex, row, pgm_read_byte(&(CHIFFRES[number][row])));
+    }
+}
+
+void updateMatrix(int hour, int minute) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastMatrixUpdate >= 1000) {
+        lastMatrixUpdate = currentMillis;
+
+        if (!is24HourFormat && hour > 12) {
+            hour -= 12;
+        }
+
+        int hourHigh = hour / 10;
+        int hourLow = hour % 10;
+        int minuteHigh = minute / 10;
+        int minuteLow = minute % 10;
+
+        clearMatrix();
+        drawDigit(hourHigh, 3);
+        drawDigit(hourLow, 2);
+        drawDigit(minuteHigh, 1);
+        drawDigit(minuteLow, 0);
+    }
+}
+
+void updateOLEDMenu() {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+
+    if (menuState == 0) {
+        // Menu principal
+        display.println("Menu principal:");
+        display.setTextColor(selectedOption == 0 ? SSD1306_BLACK : SSD1306_WHITE, selectedOption == 0 ? SSD1306_WHITE : SSD1306_BLACK);
+        display.println("1. Regler l'heure");
+        display.setTextColor(selectedOption == 1 ? SSD1306_BLACK : SSD1306_WHITE, selectedOption == 1 ? SSD1306_WHITE : SSD1306_BLACK);
+        display.println("2. Regler l'alarme");
+        display.setTextColor(selectedOption == 2 ? SSD1306_BLACK : SSD1306_WHITE, selectedOption == 2 ? SSD1306_WHITE : SSD1306_BLACK);
+        display.println("3. Choisir la melodie");
+    } else if (menuState == 1) {
+        // Menu "Régler l'heure"
+        display.println("Reglage de l'heure:");
+        display.setTextColor(selectedOption == 0 ? SSD1306_BLACK : SSD1306_WHITE, selectedOption == 0 ? SSD1306_WHITE : SSD1306_BLACK);
+        display.println("1. Format 24H");
+        display.setTextColor(selectedOption == 1 ? SSD1306_BLACK : SSD1306_WHITE, selectedOption == 1 ? SSD1306_WHITE : SSD1306_BLACK);
+        display.println("2. Format 12H");
+    } else if (menuState == 2) {
+        // Menu "Régler l'alarme"
+        display.println("Regler l'alarme :");
+        display.println("1.Reglage de l'alarme");
+        display.println(alarmActive ? "2.Alarme: Activee" : "Alarme: Desactivee");
+    } else if (menuState == 3) {
+        // Menu "Choisir la mélodie"
+        display.println("Choisir la melodie:");
+        display.setTextColor(selectedOption == 0 ? SSD1306_BLACK : SSD1306_WHITE, selectedOption == 0 ? SSD1306_WHITE : SSD1306_BLACK);
+        display.println("1. Melodie 1");
+        display.setTextColor(selectedOption == 1 ? SSD1306_BLACK : SSD1306_WHITE, selectedOption == 1 ? SSD1306_WHITE : SSD1306_BLACK);
+        display.println("2. Melodie 2");
+    }
+
+    display.display();
+}
+void reveil() {
+    static bool adjustingAlarmHours = true; // Variable pour savoir si on ajuste les heures ou les minutes
+    static unsigned long lastButtonPress = 0; // Temps du dernier appui sur le bouton
+    static const unsigned long longPressDelay = 200; // Délai pour le défilement rapide
+
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("Reglage de l'alarme:");
+
+    // Affichage de l'heure et des minutes de réveil
+    display.setCursor(0, 16);
+    display.print(F("Heure: "));
+    display.print(Halarme);
+    display.print(F(" Min: "));
+    display.print(Malarme);
+
+    // Gestion du bouton UP : Incrémente l'heure ou la minute
+    if (digitalRead(BUTTON3_PIN) == LOW) {
+        if (millis() - lastButtonPress > longPressDelay) {
+            if (adjustingAlarmHours) {
+                Halarme = (Halarme + 1) % 24; // Limite à 24 heures
+            } else {
+                Malarme = (Malarme + 1) % 60; // Limite à 60 minutes
+            }
+            lastButtonPress = millis(); // Met à jour le temps du dernier appui
+        }
+    } else {
+        lastButtonPress = 0; // Réinitialise si le bouton n'est pas enfoncé
+    }
+
+    // Gestion du bouton SELECT : Bascule entre ajustement des heures et des minutes
+    if (digitalRead(BUTTON2_PIN) == LOW && boutonchoisiretat == 0) {
+        adjustingAlarmHours = !adjustingAlarmHours; // Change l'état d'ajustement
+        boutonchoisiretat = 1; // Marque que le bouton a été pressé
+    }
+    if (digitalRead(BUTTON2_PIN) == HIGH) boutonchoisiretat = 0; // Réinitialise l'état du bouton
+
+    // Gestion du bouton RETOUR : Retour au menu principal
+    if (digitalRead(BUTTON1_PIN) == LOW) {
+        menuState = 0; // Retourner au menu principal
+        selectedOption = 0;
+    }
+
+    display.display();
+}
+
+void playMelody(int melody) {
+    if (melody == 1) {
+        int frequencies[] = {
+            392, 392, 262, 311, 311, 415, 415, 294, 
+            349
+        }; // Fréquences des notes en Hz
+        int durations[] = {
+            200, 200, 200, 200, 400, 200, 400, 200, 
+            400
+        }; // Durée de chaque note en ms
+
+        for (int i = 0; i < sizeof(frequencies) / sizeof(frequencies[0]); i++) {
+            tone(BUZZER_PIN, frequencies[i], durations[i]); // Jouer la note
+            delay(durations[i] + 100); // Pause entre les notes (ajoutez 100ms)
+        }
+        noTone(BUZZER_PIN); // Arrêter le buzzer à la fin
+    } else if (melody == 2) {
+        tone(BUZZER_PIN, 523, 500); // Exemple de mélodie 2 (note Ré)
+        delay(500);
+        noTone(BUZZER_PIN);
+    }
+}
+
+
+void handleMelodySelection() {
+    if (selectedOption == 0) {
+        playMelody(1); // Joue la mélodie 1
+    } else if (selectedOption == 1) {
+        playMelody(2); // Joue la mélodie 2
+    }
+    menuState = 0; // Retour au menu principal après avoir joué la mélodie
+    updateOLEDMenu();
+}
+
+
+void handleMenuSelection() {
+    if (menuState == 0) {
+        // Menu principal
+        if (selectedOption == 0) {
+            menuState = 1; // Aller au menu "Régler l'heure"
+            selectedOption = 0;
+        } else if (selectedOption == 1) {
+            menuState = 2; // Aller au menu "Régler l'alarme"
+            selectedOption = 0;
+        } else if (selectedOption == 2) {
+            menuState = 3; // Aller au menu "Choisir la mélodie"
+            selectedOption = 0; // Réinitialise la sélection dans le menu des mélodies
+        }
+    } else if (menuState == 1) {
+        // Menu "Régler l'heure"
+        if (selectedOption == 0) {
+            is24HourFormat = true;
+        } else if (selectedOption == 1) {
+            is24HourFormat = false;
+        }
+        menuState = 0; // Retour au menu principal
+    } else if (menuState == 3) {
+        // Menu "Choisir la mélodie"
+        handleMelodySelection(); // Joue la mélodie sélectionnée
+    }
+    updateOLEDMenu(); // Met à jour l'affichage OLED
+}
+
+
+
+
+
+void loop() {
+    DateTime now = rtcClock.now();
+    if (menuState == 0) {
+        updateMatrix(now.hour(), now.minute());
+    }
+
+    if (digitalRead(BUTTON3_PIN) == HIGH && !button3Pressed) {
+        button3Pressed = true;
+        selectedOption = (selectedOption + 1) % 3; // Cycle through options
+        updateOLEDMenu();
+    } else if (digitalRead(BUTTON3_PIN) == LOW) {
+        button3Pressed = false;
+    }
+
+    if (digitalRead(BUTTON1_PIN) == HIGH && !button1Pressed) {
+        button1Pressed = true;
+        menuState = 0; // Retour au menu principal
+        updateOLEDMenu();
+    } else if (digitalRead(BUTTON1_PIN) == LOW) {
+        button1Pressed = false;
+    }
+
+    if (digitalRead(BUTTON2_PIN) == HIGH && !button2Pressed) {
+        button2Pressed = true;
+        handleMenuSelection(); // Valide l'action en cours
+    } else if (digitalRead(BUTTON2_PIN) == LOW) {
+        button2Pressed = false;
+    }
+}
+
