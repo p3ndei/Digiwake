@@ -142,7 +142,9 @@ void updateOLEDMenu() {
     } else if (menuState == 2) {
         // Menu "Régler l'alarme"
         display.println("Regler l'alarme : ");
+        display.setTextColor(selectedOption == 0 ? SSD1306_BLACK : SSD1306_WHITE, selectedOption == 0 ? SSD1306_WHITE : SSD1306_BLACK);
         display.println("1.Reglage de l'alarme");
+        display.setTextColor(selectedOption == 1 ? SSD1306_BLACK : SSD1306_WHITE, selectedOption == 1 ? SSD1306_WHITE : SSD1306_BLACK);
         display.println(alarmActive ? "2.Alarme: Activee" : "Alarme: Desactivee");
     } else if (menuState == 3) {
         // Menu "Choisir la mélodie"
