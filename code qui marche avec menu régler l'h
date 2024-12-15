@@ -141,7 +141,7 @@ void updateOLEDMenu() {
         display.println("2. Format 12H");
     } else if (menuState == 2) {
         // Menu "Régler l'alarme"
-        display.println("Regler l'alarme :");
+        display.println("Regler l'alarme : ");
         display.println("1.Reglage de l'alarme");
         display.println(alarmActive ? "2.Alarme: Activee" : "Alarme: Desactivee");
     } else if (menuState == 3) {
@@ -218,10 +218,18 @@ void playMelody(int melody) {
         }
         noTone(BUZZER_PIN); // Arrêter le buzzer à la fin
     } else if (melody == 2) {
-        tone(BUZZER_PIN, 523, 500); // Exemple de mélodie 2 (note Ré)
-        delay(500);
-        noTone(BUZZER_PIN);
-    }
+  // Définition des fréquences et durées
+  int frequencies[] = {330, 415, 493, 277, 440, 493, 277, 440};  // Fréquences des notes
+  int durations[] = {240, 240, 240, 240, 240, 240, 240, 240};    // Durées des notes en ms
+  
+  // Boucle pour jouer les notes
+  for (int i = 0; i < sizeof(frequencies) / sizeof(frequencies[0]); i++) {
+    tone(BUZZER_PIN, frequencies[i], durations[i]); // Jouer la note
+    delay(durations[i] + 100);  // Pause entre les notes (ajoutez 100ms)
+  }
+
+  noTone(BUZZER_PIN);  // Arrêter le buzzer à la fin
+}
 }
 
 
