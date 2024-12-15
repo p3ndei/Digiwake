@@ -1,0 +1,22 @@
+void playMelody(int melody) {
+    if (melody == 1) {
+        int frequencies[] = {
+            392, 392, 262, 311, 311, 415, 415, 294, 
+            349
+        }; // Fréquences des notes en Hz
+        int durations[] = {
+            200, 200, 200, 200, 400, 200, 400, 200, 
+            400
+        }; // Durée de chaque note en ms
+
+        for (int i = 0; i < sizeof(frequencies) / sizeof(frequencies[0]); i++) {
+            tone(BUZZER_PIN, frequencies[i], durations[i]); // Jouer la note
+            delay(durations[i] + 100); // Pause entre les notes (ajoutez 100ms)
+        }
+        noTone(BUZZER_PIN); // Arrêter le buzzer à la fin
+    } else if (melody == 2) {
+        tone(BUZZER_PIN, 523, 500); // Exemple de mélodie 2 (note Ré)
+        delay(500);
+        noTone(BUZZER_PIN);
+    }
+}
